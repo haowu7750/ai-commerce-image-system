@@ -1,0 +1,39 @@
+{
+  "project": "AI电商运营助手系统",
+  "package_version": "0.1",
+  "package_date": "2026-08-10",
+  "language": "zh-CN",
+  "timezone": "Asia/Shanghai",
+  "status": "requirements_handoff_ready",
+  "contains_source_code": false,
+  "roles": [
+    "电商运营",
+    "美工",
+    "管理员"
+  ],
+  "document_order": [
+    "00_使用说明.md",
+    "01_已确认决策与文档优先级.md",
+    "02_产品需求文档_PRD_v0.1.md",
+    "03_模块功能说明书_v0.1.md",
+    "04_MVP系统蓝图.md",
+    "05_系统生成总指令.md",
+    "06_开发阶段与验收清单.md"
+  ],
+  "precedence": [
+    "01_已确认决策与文档优先级.md",
+    "02_产品需求文档_PRD_v0.1.md",
+    "03_模块功能说明书_v0.1.md",
+    "04_MVP系统蓝图.md"
+  ],
+  "mvp_real_integrations": {
+    "ai": "mock_provider_required",
+    "erp": "mock_or_file_adapter_only"
+  },
+  "forbidden": [
+    "automatic_product_publishing",
+    "unreviewed_ai_writeback",
+    "hardcoded_credentials",
+    "unverified_vendor_erp_api"
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "name": "ai-ecommerce-operations-assistant",
+  "private": true,
+  "packageManager": "pnpm@11.16.0",
+  "scripts": {
+    "dev": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/Start-Local.ps1",
+    "dev:backend": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/Start-Local.ps1 -BackendOnly",
+    "dev:frontend": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/Start-Local.ps1 -FrontendOnly",
+    "dev:web": "pnpm --dir frontend dev",
+    "build:web": "pnpm --dir frontend build",
+    "typecheck:web": "pnpm --dir frontend typecheck",
+    "test:web": "pnpm --dir frontend test",
+    "test:backend": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/Test-Local.ps1 -SkipFrontend -SkipSafety",
+    "check:safety": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/Test-Safety.ps1",
+    "test": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/Test-Local.ps1",
+    "test:build": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/Test-Local.ps1 -IncludeWebBuild"
+  }
+}
