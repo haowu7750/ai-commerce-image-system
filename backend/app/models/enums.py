@@ -43,6 +43,28 @@ class ImageOperation(StrEnum):
     EDIT = "edit"
 
 
+class BatchImageMode(StrEnum):
+    REPLACE_PRODUCT = "replace_product"
+    CUSTOM_EDIT = "custom_edit"
+    RESIZE = "resize"
+
+
+class BatchImageTaskStatus(StrEnum):
+    QUEUED = "queued"
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    PARTIAL = "partial"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+class BatchImageItemStatus(StrEnum):
+    QUEUED = "queued"
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+
+
 class ImageJobStatus(StrEnum):
     QUEUED = "queued"
     RUNNING = "running"

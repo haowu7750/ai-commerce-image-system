@@ -19,6 +19,9 @@ describe("角色权限骨架", () => {
     expect(canAccess("operator", "/image-studio")).toBe(true);
     expect(canAccess("designer", "/image-studio")).toBe(false);
     expect(canAccess("admin", "/image-studio")).toBe(false);
+    expect(canAccess("operator", "/batch-image")).toBe(true);
+    expect(canAccess("designer", "/batch-image")).toBe(false);
+    expect(canAccess("admin", "/batch-image")).toBe(false);
   });
 
   it("管理员首页不授予运营业务路径", () => {

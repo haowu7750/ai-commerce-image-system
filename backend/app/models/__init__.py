@@ -8,7 +8,13 @@ from app.models.commerce import (
     Project,
     ProjectDeletionRecord,
 )
-from app.models.generation import ImageGenerationJob, ImageGenerationOutput, ImageWorkflow
+from app.models.generation import (
+    BatchImageItem,
+    BatchImageTask,
+    ImageGenerationJob,
+    ImageGenerationOutput,
+    ImageWorkflow,
+)
 from app.models.erp import (
     ERPExternalEntityMapping,
     ERPFieldMapping,
@@ -21,6 +27,8 @@ from app.models.identity import Role, User, UserRole
 __all__ = [
     "Asset",
     "AuditEvent",
+    "BatchImageItem",
+    "BatchImageTask",
     "Base",
     "ContentVersion",
     "DesignSubmission",

@@ -87,7 +87,7 @@ async def create_and_run_image_job(
         if provider.name == "mock":
             response = await provider.generate_image(params)
         else:
-            image_inputs = [_asset_to_image_input(asset) for asset in reference_assets]
+            image_inputs = [asset_to_image_input(asset) for asset in reference_assets]
             response = await provider.edit_image(
                 EditImageParams(**params.model_dump()), image_inputs
             )
@@ -142,7 +142,7 @@ async def create_and_run_image_job(
     return job
 
 
-def _asset_to_image_input(asset: Asset) -> ImageInput:
+def asset_to_image_input(asset: Asset) -> ImageInput:
     value = asset.file_url or ""
     if not value.startswith("data:image/") or ";base64," not in value:
         raise ProviderError(
@@ -176,3 +176,7 @@ def _asset_to_image_input(asset: Asset) -> ImageInput:
         content=content,
         content_type=content_type,
     )
+
+
+# Keep the previous internal name available for the existing provider contract tests.
+_asset_to_image_input = asset_to_image_input
