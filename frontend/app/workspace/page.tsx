@@ -131,10 +131,11 @@ export default function WorkspacePage() {
         )}
       </section>
 
-      <section className="mt-6 grid gap-4 md:grid-cols-3">
+      <section className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {[
           ["商品事实与素材", "维护商品卡、上传产品参考图并由运营确认。", "/projects"],
           ["AI 生图", "按七阶段推进 Mock 生图、检查与人工确认。", "/image-studio"],
+          ["批量改图", "批量替换、同指令修改或改尺寸，逐图验收后下载。", "/batch-image"],
           ["美工验收", "查看提交版本、确认通过或退回返工。", "/tasks"],
         ].map(([title, description, href]) => (
           <Link className="panel p-5 transition hover:-translate-y-0.5" href={href} key={title}>

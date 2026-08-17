@@ -14,7 +14,13 @@ from app.dependencies import get_db, require_roles
 from app.models.collaboration import DesignTask, SystemResource
 from app.models.commerce import AuditEvent, ContentVersion, Project
 from app.models.enums import ImageJobStatus, ImageWorkflowStatus, ProjectStatus, RoleName
-from app.models.generation import ImageGenerationJob, ImageGenerationOutput, ImageWorkflow
+from app.models.generation import (
+    BatchImageItem,
+    BatchImageTask,
+    ImageGenerationJob,
+    ImageGenerationOutput,
+    ImageWorkflow,
+)
 from app.models.identity import User
 from app.schemas.reports import (
     DesignArtifactView,
@@ -140,6 +146,37 @@ def _confirmed_images(db: Session, project_id: str) -> list[ImageArtifactView]:
                 )
                 for output in outputs
             )
+    batch_items = db.scalars(
+        select(BatchImageItem)
+        .join(BatchImageTask, BatchImageTask.id == BatchImageItem.task_id)
+        .where(
+            BatchImageTask.project_id == project_id,
+            BatchImageItem.confirmed_at.is_not(None),
+        )
+        .order_by(BatchImageTask.created_at, BatchImageItem.position)
+    ).all()
+    for item in batch_items:
+        task = db.get(BatchImageTask, item.task_id)
+        if task is None:
+            continue
+        artifacts.append(
+            ImageArtifactView(
+                workflow_id=f"batch:{task.id}",
+                job_id=task.id,
+                output_id=item.id,
+                asset_id=item.output_asset_id,
+                provider=task.provider,
+                model=task.model,
+                mime_type=item.output_mime_type,
+                provider_url=item.provider_url,
+                preview_data_url=(
+                    f"data:{item.output_mime_type or 'image/png'};base64,{item.b64_json}"
+                    if item.b64_json
+                    else None
+                ),
+                revised_prompt=item.revised_prompt,
+            )
+        )
     return artifacts
 
 

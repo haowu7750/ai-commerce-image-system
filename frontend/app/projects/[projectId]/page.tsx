@@ -443,12 +443,17 @@ export default function ProjectDetailPage() {
         {completed ? (
           <span className="status-chip">已完成 · 只读</span>
         ) : (
-          <Link
-            className="button-primary"
-            href={`/image-studio?project=${projectId}&assets=${encodeURIComponent(selectedAssets.map((asset) => asset.id).join(","))}`}
-          >
-            进入 AI 生图（已选 {selectedAssets.length}）
-          </Link>
+          <div className="flex flex-wrap gap-2">
+            <Link className="button-secondary" href={`/batch-image?project=${projectId}`}>
+              批量改图
+            </Link>
+            <Link
+              className="button-primary"
+              href={`/image-studio?project=${projectId}&assets=${encodeURIComponent(selectedAssets.map((asset) => asset.id).join(","))}`}
+            >
+              进入 AI 生图（已选 {selectedAssets.length}）
+            </Link>
+          </div>
         )}
       </div>
 

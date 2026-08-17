@@ -3,11 +3,14 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import Enum, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
+from sqlalchemy import DateTime, Enum, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 from app.models.enums import (
+    BatchImageItemStatus,
+    BatchImageMode,
+    BatchImageTaskStatus,
     ImageComplianceStatus,
     ImageJobStatus,
     ImageOperation,
@@ -116,3 +119,104 @@ class ImageGenerationOutput(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
 
     job: Mapped[ImageGenerationJob] = relationship(back_populates="outputs")
+
+
+class BatchImageTask(Base, UUIDPrimaryKeyMixin, TimestampMixin):
+    __tablename__ = "batch_image_tasks"
+    __table_args__ = (UniqueConstraint("created_by_id", "idempotency_key"),)
+
+    project_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    created_by_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="RESTRICT"), index=True
+    )
+    mode: Mapped[BatchImageMode] = mapped_column(
+        Enum(BatchImageMode, native_enum=False), index=True
+    )
+    status: Mapped[BatchImageTaskStatus] = mapped_column(
+        Enum(BatchImageTaskStatus, native_enum=False),
+        default=BatchImageTaskStatus.QUEUED,
+        index=True,
+    )
+    provider: Mapped[str] = mapped_column(String(64), nullable=False)
+    model: Mapped[str] = mapped_column(String(128), nullable=False)
+    prompt: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    options_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    product_reference_asset_ids_json: Mapped[list[str]] = mapped_column(
+        JSON, default=list, nullable=False
+    )
+    source_asset_ids_json: Mapped[list[str]] = mapped_column(
+        JSON, default=list, nullable=False
+    )
+    input_snapshot_json: Mapped[dict[str, Any]] = mapped_column(
+        JSON, default=dict, nullable=False
+    )
+    idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    progress_total: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    progress_done: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    succeeded_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    failed_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    error_code: Mapped[str | None] = mapped_column(String(100))
+    error_message: Mapped[str | None] = mapped_column(Text)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    items: Mapped[list[BatchImageItem]] = relationship(
+        back_populates="task",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+        order_by="BatchImageItem.position",
+    )
+
+
+class BatchImageItem(Base, UUIDPrimaryKeyMixin, TimestampMixin):
+    __tablename__ = "batch_image_items"
+    __table_args__ = (UniqueConstraint("task_id", "position"),)
+
+    task_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("batch_image_tasks.id", ondelete="CASCADE"), index=True
+    )
+    source_asset_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("assets.id", ondelete="SET NULL"), index=True
+    )
+    output_asset_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("assets.id", ondelete="SET NULL"), index=True
+    )
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[BatchImageItemStatus] = mapped_column(
+        Enum(BatchImageItemStatus, native_enum=False),
+        default=BatchImageItemStatus.QUEUED,
+        index=True,
+    )
+    error_code: Mapped[str | None] = mapped_column(String(100))
+    error_message: Mapped[str | None] = mapped_column(Text)
+    output_mime_type: Mapped[str | None] = mapped_column(String(100))
+    provider_url: Mapped[str | None] = mapped_column(Text)
+    b64_json: Mapped[str | None] = mapped_column(Text)
+    revised_prompt: Mapped[str | None] = mapped_column(Text)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    qa_status: Mapped[ImageQaStatus] = mapped_column(
+        Enum(ImageQaStatus, native_enum=False),
+        default=ImageQaStatus.PENDING,
+        index=True,
+    )
+    compliance_status: Mapped[ImageComplianceStatus] = mapped_column(
+        Enum(ImageComplianceStatus, native_enum=False),
+        default=ImageComplianceStatus.UNCHECKED,
+        index=True,
+    )
+    review_report_json: Mapped[dict[str, Any]] = mapped_column(
+        JSON, default=dict, nullable=False
+    )
+    reviewed_by_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="SET NULL"), index=True
+    )
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    confirmed_by_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="SET NULL"), index=True
+    )
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revision: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+
+    task: Mapped[BatchImageTask] = relationship(back_populates="items")

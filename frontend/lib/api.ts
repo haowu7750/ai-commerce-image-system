@@ -204,6 +204,65 @@ export type ImageJob = {
   }>;
 };
 
+export type BatchImageMode =
+  | "scene_replace"
+  | "pattern_extract"
+  | "resize"
+  | "buyer_show"
+  | "angle_fission"
+  | "custom_edit"
+  | "replace_product";
+
+export type BatchImageItem = {
+  id: string;
+  task_id: string;
+  source_asset_id: string | null;
+  output_asset_id: string | null;
+  position: number;
+  status: "queued" | "running" | "succeeded" | "failed";
+  error_code: string | null;
+  error_message: string | null;
+  output_mime_type: string | null;
+  provider_url: string | null;
+  preview_data_url: string | null;
+  revised_prompt: string | null;
+  metadata: Record<string, unknown>;
+  qa_status: string;
+  compliance_status: string;
+  review_report: Record<string, unknown>;
+  reviewed_by_id: string | null;
+  reviewed_at: string | null;
+  confirmed_by_id: string | null;
+  confirmed_at: string | null;
+  revision: number;
+};
+
+export type BatchImageTask = {
+  id: string;
+  project_id: string;
+  created_by_id: string;
+  mode: BatchImageMode;
+  status: "queued" | "running" | "succeeded" | "partial" | "failed" | "cancelled";
+  provider: string;
+  model: string;
+  prompt: string;
+  options: Record<string, unknown>;
+  product_reference_asset_ids: string[];
+  source_asset_ids: string[];
+  is_archived: boolean;
+  progress_total: number;
+  progress_done: number;
+  succeeded_count: number;
+  failed_count: number;
+  error_code: string | null;
+  error_message: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+  created_at: string;
+  updated_at: string;
+  items: BatchImageItem[];
+};
+
 export class ApiError extends Error {
   status: number;
 

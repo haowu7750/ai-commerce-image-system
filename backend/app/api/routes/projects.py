@@ -9,6 +9,7 @@ from app.dependencies import get_db, require_roles
 from app.models.collaboration import DesignTask
 from app.models.commerce import Asset, ContentVersion, ProductCard, Project
 from app.models.enums import (
+    BatchImageTaskStatus,
     ContentStatus,
     ImageComplianceStatus,
     ImageQaStatus,
@@ -16,7 +17,12 @@ from app.models.enums import (
     ProjectStatus,
     RoleName,
 )
-from app.models.generation import ImageGenerationJob, ImageWorkflow
+from app.models.generation import (
+    BatchImageItem,
+    BatchImageTask,
+    ImageGenerationJob,
+    ImageWorkflow,
+)
 from app.models.identity import User
 from app.schemas.project import (
     ProjectCreate,
@@ -162,6 +168,20 @@ def asset_reference_blockers(db: Session, asset: Asset) -> list[str]:
     ).all()
     if any(asset.id in (job.input_asset_ids_json or []) for job in generation_jobs):
         blockers.append("该素材已被 AI 生图任务引用，需保留输入快照")
+
+    batch_tasks = db.scalars(
+        select(BatchImageTask).where(BatchImageTask.project_id == asset.project_id)
+    ).all()
+    if any(
+        asset.id in (task.product_reference_asset_ids_json or [])
+        or asset.id in (task.source_asset_ids_json or [])
+        for task in batch_tasks
+    ):
+        blockers.append("该素材已被批量改图任务引用，需保留输入快照")
+    if db.scalar(
+        select(BatchImageItem.id).where(BatchImageItem.output_asset_id == asset.id)
+    ) is not None:
+        blockers.append("该素材是运营已确认的批量改图结果")
 
     final_versions = db.scalars(
         select(ContentVersion).where(
@@ -439,6 +459,28 @@ def project_completion_blockers(db: Session, project: Project) -> list[str]:
     )
     if risky_workflow is not None:
         blockers.append("仍有未处理的生图合规风险")
+    risky_batch_item = db.scalar(
+        select(BatchImageItem.id)
+        .join(BatchImageTask, BatchImageTask.id == BatchImageItem.task_id)
+        .where(
+            BatchImageTask.project_id == project.id,
+            BatchImageItem.compliance_status.in_(
+                [ImageComplianceStatus.HIGH_OPEN, ImageComplianceStatus.MEDIUM_OPEN]
+            ),
+        )
+    )
+    if risky_batch_item is not None:
+        blockers.append("仍有未处理的批量改图合规风险")
+    active_batch_task = db.scalar(
+        select(BatchImageTask.id).where(
+            BatchImageTask.project_id == project.id,
+            BatchImageTask.status.in_(
+                [BatchImageTaskStatus.QUEUED, BatchImageTaskStatus.RUNNING]
+            ),
+        )
+    )
+    if active_batch_task is not None:
+        blockers.append("仍有批量改图任务正在执行")
     return blockers
 
 

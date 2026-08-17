@@ -43,6 +43,33 @@ class ImageOperation(StrEnum):
     EDIT = "edit"
 
 
+class BatchImageMode(StrEnum):
+    SCENE_REPLACE = "scene_replace"
+    PATTERN_EXTRACT = "pattern_extract"
+    CUSTOM_EDIT = "custom_edit"
+    RESIZE = "resize"
+    BUYER_SHOW = "buyer_show"
+    ANGLE_FISSION = "angle_fission"
+    # Kept so tasks created by the first supervised-batch release remain readable.
+    REPLACE_PRODUCT = "replace_product"
+
+
+class BatchImageTaskStatus(StrEnum):
+    QUEUED = "queued"
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    PARTIAL = "partial"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+class BatchImageItemStatus(StrEnum):
+    QUEUED = "queued"
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+
+
 class ImageJobStatus(StrEnum):
     QUEUED = "queued"
     RUNNING = "running"

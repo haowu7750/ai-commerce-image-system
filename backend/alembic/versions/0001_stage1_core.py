@@ -22,6 +22,8 @@ depends_on: Union[str, Sequence[str], None] = None
 # tables in revision 0001. Keep the historical boundary explicit so 0002 owns
 # the role workspace tables on both fresh and existing databases.
 LATER_TABLES = {
+    "batch_image_tasks",
+    "batch_image_items",
     "design_tasks",
     "design_submissions",
     "system_resources",
