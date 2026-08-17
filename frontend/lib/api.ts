@@ -204,7 +204,14 @@ export type ImageJob = {
   }>;
 };
 
-export type BatchImageMode = "replace_product" | "custom_edit" | "resize";
+export type BatchImageMode =
+  | "scene_replace"
+  | "pattern_extract"
+  | "resize"
+  | "buyer_show"
+  | "angle_fission"
+  | "custom_edit"
+  | "replace_product";
 
 export type BatchImageItem = {
   id: string;
@@ -242,6 +249,7 @@ export type BatchImageTask = {
   options: Record<string, unknown>;
   product_reference_asset_ids: string[];
   source_asset_ids: string[];
+  is_archived: boolean;
   progress_total: number;
   progress_done: number;
   succeeded_count: number;

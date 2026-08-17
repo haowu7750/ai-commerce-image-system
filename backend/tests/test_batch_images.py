@@ -194,7 +194,7 @@ def test_batch_modes_and_input_gates(client: TestClient) -> None:
     project_id, reference_id, source_ids = _project_with_assets(client, headers)
     provider = CountingBatchProvider()
     client.app.state.image_provider = provider
-    for index, mode in enumerate(("replace_product", "resize"), start=1):
+    for index, mode in enumerate(("scene_replace", "resize"), start=1):
         response = client.post(
             "/api/v1/batch-image-tasks",
             headers=headers,
@@ -220,10 +220,10 @@ def test_batch_modes_and_input_gates(client: TestClient) -> None:
         headers=headers,
         json={
             "project_id": project_id,
-            "mode": "custom_edit",
+            "mode": "scene_replace",
             "product_reference_asset_ids": [],
             "source_asset_ids": [source_ids[0]],
-            "instruction": "改成白色背景",
+            "instruction": "将商品自然放入白色场景",
             "idempotency_key": "batch-invalid-0001",
         },
     )
@@ -270,3 +270,88 @@ def test_batch_modes_and_input_gates(client: TestClient) -> None:
         },
     )
     assert blocked_stale_review.status_code == 409
+
+
+def test_six_batch_tools_pairing_angle_outputs_and_soft_delete(
+    client: TestClient,
+) -> None:
+    headers = auth_header(login(client, "operator@example.local"))
+    project_id, reference_id, source_ids = _project_with_assets(client, headers)
+    provider = CountingBatchProvider()
+    client.app.state.image_provider = provider
+
+    cases = [
+        {
+            "mode": "pattern_extract",
+            "source_asset_ids": [source_ids[0]],
+            "print_carrier": "服装",
+            "size": "1024x1024",
+        },
+        {
+            "mode": "buyer_show",
+            "product_reference_asset_ids": [reference_id],
+            "source_asset_ids": [source_ids[0]],
+            "category": "家居日用",
+        },
+        {
+            "mode": "angle_fission",
+            "source_asset_ids": [source_ids[0]],
+            "subject": "透明收纳盒",
+            "overall_count": 2,
+            "detail_count": 1,
+        },
+        {
+            "mode": "custom_edit",
+            "source_asset_ids": [source_ids[0]],
+            "secondary_asset_ids": [source_ids[1]],
+            "instruction": "把参考图二的背景风格应用到参考图一，商品事实保持不变",
+        },
+    ]
+    created_ids: list[str] = []
+    for index, case in enumerate(cases, start=1):
+        response = client.post(
+            "/api/v1/batch-image-tasks",
+            headers=headers,
+            json={
+                "project_id": project_id,
+                "product_reference_asset_ids": [],
+                "instruction": "",
+                "idempotency_key": f"six-tools-test-{index:04d}",
+                **case,
+            },
+        )
+        assert response.status_code == 201, response.text
+        created_ids.append(response.json()["id"])
+        detail = client.get(
+            f"/api/v1/batch-image-tasks/{response.json()['id']}", headers=headers
+        ).json()
+        assert detail["status"] == "succeeded"
+        if case["mode"] == "angle_fission":
+            assert detail["progress_total"] == 3
+            assert [item["metadata"]["shot_kind"] for item in detail["items"]] == [
+                "overall",
+                "overall",
+                "detail",
+            ]
+        if case["mode"] == "custom_edit":
+            assert detail["items"][0]["metadata"]["secondary_asset_id"] == source_ids[1]
+            assert len(detail["items"][0]["metadata"]["input_order"]) == 2
+
+    assert provider.edit_calls == 6
+
+    archived = client.post(
+        "/api/v1/batch-image-tasks/archive-selection",
+        headers=headers,
+        json={"task_ids": created_ids[:2]},
+    )
+    assert archived.status_code == 200, archived.text
+    assert all(task["is_archived"] for task in archived.json())
+    visible = client.get(
+        f"/api/v1/batch-image-tasks?project_id={project_id}", headers=headers
+    ).json()
+    assert not set(created_ids[:2]).intersection(task["id"] for task in visible)
+    restored = client.post(
+        f"/api/v1/batch-image-tasks/{created_ids[0]}/restore", headers=headers
+    )
+    assert restored.status_code == 200, restored.text
+    assert restored.json()["is_archived"] is False

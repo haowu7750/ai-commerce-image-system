@@ -16,6 +16,8 @@ from app.models.commerce import Asset, ProductCard, Project
 from app.models.enums import (
     AssetType,
     BatchImageItemStatus,
+    BatchImageMode,
+    BatchImageTaskStatus,
     ImageComplianceStatus,
     ImageQaStatus,
     ProjectStatus,
@@ -29,6 +31,7 @@ from app.schemas.batch_images import (
     BatchImageItemReview,
     BatchImageItemView,
     BatchImageTaskCreate,
+    BatchImageTaskSelection,
     BatchImageTaskView,
 )
 from app.services.audit import add_audit_event
@@ -81,6 +84,7 @@ def to_task_view(task: BatchImageTask) -> BatchImageTaskView:
         options=task.options_json or {},
         product_reference_asset_ids=task.product_reference_asset_ids_json or [],
         source_asset_ids=task.source_asset_ids_json or [],
+        is_archived=bool((task.options_json or {}).get("archived_at")),
         progress_total=task.progress_total,
         progress_done=task.progress_done,
         succeeded_count=task.succeeded_count,
@@ -122,7 +126,27 @@ def owned_item(
     return task, item
 
 
+def confirmed_local_items(task: BatchImageTask) -> list[BatchImageItem]:
+    return [item for item in task.items if item.confirmed_at and item.b64_json]
+
+
+def build_result_archive(tasks: list[BatchImageTask]) -> io.BytesIO:
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        for task in tasks:
+            for item in confirmed_local_items(task):
+                extension = "jpg" if item.output_mime_type == "image/jpeg" else "png"
+                archive.writestr(
+                    f"{task.mode.value}-{task.id}-{item.position:02d}.{extension}",
+                    base64.b64decode(item.b64_json or ""),
+                )
+    buffer.seek(0)
+    return buffer
+
+
 def ensure_task_inputs_current(db: Session, task: BatchImageTask) -> None:
+    if (task.options_json or {}).get("archived_at"):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="任务已删除，请先恢复")
     project = db.get(Project, task.project_id)
     if project is None or project.status == ProjectStatus.ARCHIVED:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="项目已删除，请先恢复")
@@ -141,7 +165,7 @@ def ensure_task_inputs_current(db: Session, task: BatchImageTask) -> None:
         )
     expected_hashes = {
         row.get("id"): row.get("sha256")
-        for key in ("reference_assets", "source_assets")
+        for key in ("reference_assets", "source_assets", "secondary_assets")
         for row in snapshot.get(key, [])
         if isinstance(row, dict)
     }
@@ -212,6 +236,9 @@ async def create_task(
 @router.get("", response_model=list[BatchImageTaskView])
 def list_tasks(
     project_id: str | None = None,
+    mode: BatchImageMode | None = None,
+    task_status: BatchImageTaskStatus | None = None,
+    include_archived: bool = False,
     db: Session = Depends(get_db),
     operator: User = Depends(require_roles(RoleName.OPERATOR.value)),
 ) -> list[BatchImageTaskView]:
@@ -222,7 +249,82 @@ def list_tasks(
     )
     if project_id:
         query = query.where(BatchImageTask.project_id == project_id)
-    return [to_task_view(task) for task in db.scalars(query).all()]
+    if mode:
+        query = query.where(BatchImageTask.mode == mode)
+    if task_status:
+        query = query.where(BatchImageTask.status == task_status)
+    tasks = list(db.scalars(query).all())
+    if not include_archived:
+        tasks = [task for task in tasks if not (task.options_json or {}).get("archived_at")]
+    return [to_task_view(task) for task in tasks]
+
+
+@router.post("/download-selection")
+def download_selected_results(
+    payload: BatchImageTaskSelection,
+    db: Session = Depends(get_db),
+    operator: User = Depends(require_roles(RoleName.OPERATOR.value)),
+) -> StreamingResponse:
+    tasks = list(
+        db.scalars(
+            select(BatchImageTask).where(
+                BatchImageTask.id.in_(payload.task_ids),
+                BatchImageTask.created_by_id == operator.id,
+            )
+        ).all()
+    )
+    if len(tasks) != len(set(payload.task_ids)):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="一个或多个批量任务不存在")
+    if not any(confirmed_local_items(task) for task in tasks):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="所选任务暂无已由运营确认且可本地打包的图片",
+        )
+    return StreamingResponse(
+        build_result_archive(tasks),
+        media_type="application/zip",
+        headers={"Content-Disposition": 'attachment; filename="batch-selected-confirmed.zip"'},
+    )
+
+
+@router.post("/archive-selection", response_model=list[BatchImageTaskView])
+def archive_selected_tasks(
+    payload: BatchImageTaskSelection,
+    request: Request,
+    db: Session = Depends(get_db),
+    operator: User = Depends(require_roles(RoleName.OPERATOR.value)),
+) -> list[BatchImageTaskView]:
+    tasks = list(
+        db.scalars(
+            select(BatchImageTask).where(
+                BatchImageTask.id.in_(payload.task_ids),
+                BatchImageTask.created_by_id == operator.id,
+            )
+        ).all()
+    )
+    if len(tasks) != len(set(payload.task_ids)):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="一个或多个批量任务不存在")
+    if any(task.status in {BatchImageTaskStatus.QUEUED, BatchImageTaskStatus.RUNNING} for task in tasks):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="排队中或运行中的任务不能删除")
+    archived_at = datetime.now(timezone.utc).isoformat()
+    for task in tasks:
+        task.options_json = {
+            **(task.options_json or {}),
+            "archived_at": archived_at,
+            "archived_by_id": operator.id,
+        }
+        add_audit_event(
+            db,
+            action="batch_image_task.archived",
+            object_type="batch_image_task",
+            object_id=task.id,
+            project_id=task.project_id,
+            actor_id=operator.id,
+            request_id=getattr(request.state, "request_id", None),
+            payload_summary={"soft_delete": True},
+        )
+    db.commit()
+    return [to_task_view(task) for task in tasks]
 
 
 @router.get("/{task_id}", response_model=BatchImageTaskView)
@@ -232,6 +334,62 @@ def get_task(
     operator: User = Depends(require_roles(RoleName.OPERATOR.value)),
 ) -> BatchImageTaskView:
     return to_task_view(owned_task(db, task_id, operator.id))
+
+
+@router.delete("/{task_id}", response_model=BatchImageTaskView)
+def archive_task(
+    task_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    operator: User = Depends(require_roles(RoleName.OPERATOR.value)),
+) -> BatchImageTaskView:
+    task = owned_task(db, task_id, operator.id)
+    if task.status in {BatchImageTaskStatus.QUEUED, BatchImageTaskStatus.RUNNING}:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="排队中或运行中的任务不能删除")
+    task.options_json = {
+        **(task.options_json or {}),
+        "archived_at": datetime.now(timezone.utc).isoformat(),
+        "archived_by_id": operator.id,
+    }
+    add_audit_event(
+        db,
+        action="batch_image_task.archived",
+        object_type="batch_image_task",
+        object_id=task.id,
+        project_id=task.project_id,
+        actor_id=operator.id,
+        request_id=getattr(request.state, "request_id", None),
+        payload_summary={"soft_delete": True},
+    )
+    db.commit()
+    return to_task_view(task)
+
+
+@router.post("/{task_id}/restore", response_model=BatchImageTaskView)
+def restore_task(
+    task_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    operator: User = Depends(require_roles(RoleName.OPERATOR.value)),
+) -> BatchImageTaskView:
+    task = owned_task(db, task_id, operator.id)
+    task.options_json = {
+        key: value
+        for key, value in (task.options_json or {}).items()
+        if key not in {"archived_at", "archived_by_id"}
+    }
+    add_audit_event(
+        db,
+        action="batch_image_task.restored",
+        object_type="batch_image_task",
+        object_id=task.id,
+        project_id=task.project_id,
+        actor_id=operator.id,
+        request_id=getattr(request.state, "request_id", None),
+        payload_summary={"soft_delete": True},
+    )
+    db.commit()
+    return to_task_view(task)
 
 
 @router.post("/{task_id}/items/{item_id}/review", response_model=BatchImageItemView)
@@ -382,23 +540,14 @@ def download_confirmed_results(
     operator: User = Depends(require_roles(RoleName.OPERATOR.value)),
 ) -> StreamingResponse:
     task = owned_task(db, task_id, operator.id)
-    confirmed = [item for item in task.items if item.confirmed_at and item.b64_json]
+    confirmed = confirmed_local_items(task)
     if not confirmed:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="暂无已由运营确认且可本地打包的图片",
         )
-    buffer = io.BytesIO()
-    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
-        for item in confirmed:
-            extension = "jpg" if item.output_mime_type == "image/jpeg" else "png"
-            archive.writestr(
-                f"batch-{task.id}-{item.position:02d}.{extension}",
-                base64.b64decode(item.b64_json or ""),
-            )
-    buffer.seek(0)
     return StreamingResponse(
-        buffer,
+        build_result_archive([task]),
         media_type="application/zip",
         headers={
             "Content-Disposition": f'attachment; filename="batch-{task.id}-confirmed.zip"'

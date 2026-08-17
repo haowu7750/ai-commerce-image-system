@@ -44,9 +44,14 @@ class ImageOperation(StrEnum):
 
 
 class BatchImageMode(StrEnum):
-    REPLACE_PRODUCT = "replace_product"
+    SCENE_REPLACE = "scene_replace"
+    PATTERN_EXTRACT = "pattern_extract"
     CUSTOM_EDIT = "custom_edit"
     RESIZE = "resize"
+    BUYER_SHOW = "buyer_show"
+    ANGLE_FISSION = "angle_fission"
+    # Kept so tasks created by the first supervised-batch release remain readable.
+    REPLACE_PRODUCT = "replace_product"
 
 
 class BatchImageTaskStatus(StrEnum):

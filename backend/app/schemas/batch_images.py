@@ -18,16 +18,45 @@ class BatchImageTaskCreate(BaseModel):
 
     project_id: str
     mode: BatchImageMode
-    product_reference_asset_ids: list[str] = Field(min_length=1, max_length=3)
+    product_reference_asset_ids: list[str] = Field(default_factory=list, max_length=3)
     source_asset_ids: list[str] = Field(min_length=1, max_length=10)
+    secondary_asset_ids: list[str] = Field(default_factory=list, max_length=10)
     instruction: str = Field(default="", max_length=2000)
     size: str = Field(default="1024x1024", pattern=r"^\d{2,4}x\d{2,4}$")
+    category: str = Field(default="通用类目", min_length=1, max_length=100)
+    print_carrier: str | None = Field(default=None, max_length=100)
+    subject: str | None = Field(default=None, max_length=100)
+    overall_count: int = Field(default=1, ge=0, le=8)
+    detail_count: int = Field(default=0, ge=0, le=8)
     idempotency_key: str = Field(min_length=8, max_length=128)
 
     @model_validator(mode="after")
     def validate_mode_inputs(self) -> BatchImageTaskCreate:
         if self.mode == BatchImageMode.CUSTOM_EDIT and not self.instruction.strip():
             raise ValueError("自定义批量改图必须填写修改说明")
+        if self.mode in {
+            BatchImageMode.SCENE_REPLACE,
+            BatchImageMode.BUYER_SHOW,
+            BatchImageMode.REPLACE_PRODUCT,
+        } and len(self.product_reference_asset_ids) != 1:
+            raise ValueError("场景替换和买家秀必须选择 1 张商品参考图")
+        if self.mode == BatchImageMode.PATTERN_EXTRACT and not (
+            self.print_carrier or ""
+        ).strip():
+            raise ValueError("批量印花提取必须选择印花载体")
+        if self.mode == BatchImageMode.ANGLE_FISSION:
+            if not (self.subject or "").strip():
+                raise ValueError("角度裂变必须填写拍摄主体")
+            if self.overall_count + self.detail_count < 1:
+                raise ValueError("整体图和细节图合计至少生成 1 张")
+            if len(self.source_asset_ids) > 5:
+                raise ValueError("角度裂变最多上传 5 张产品场景图")
+        if self.secondary_asset_ids and self.mode != BatchImageMode.CUSTOM_EDIT:
+            raise ValueError("只有自定义批量支持参考图二")
+        if self.secondary_asset_ids and len(self.secondary_asset_ids) != len(
+            self.source_asset_ids
+        ):
+            raise ValueError("参考图二必须与参考图一逐张配对，数量需要一致")
         width_text, height_text = self.size.split("x", 1)
         width, height = int(width_text), int(height_text)
         if not (64 <= width <= 4096 and 64 <= height <= 4096):
@@ -38,7 +67,15 @@ class BatchImageTaskCreate(BaseModel):
             raise ValueError("商品参考图不能重复")
         if len(set(self.source_asset_ids)) != len(self.source_asset_ids):
             raise ValueError("待处理图片不能重复")
+        if len(set(self.secondary_asset_ids)) != len(self.secondary_asset_ids):
+            raise ValueError("参考图二不能重复")
         return self
+
+
+class BatchImageTaskSelection(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    task_ids: list[str] = Field(min_length=1, max_length=50)
 
 
 class BatchImageItemReview(BaseModel):
@@ -104,6 +141,7 @@ class BatchImageTaskView(BaseModel):
     options: dict[str, object]
     product_reference_asset_ids: list[str]
     source_asset_ids: list[str]
+    is_archived: bool
     progress_total: int
     progress_done: int
     succeeded_count: int

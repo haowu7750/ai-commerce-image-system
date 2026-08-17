@@ -43,7 +43,7 @@ export const ROLE_POLICIES: Record<UserRole, RolePolicy> = {
       { label: "商品项目", href: "/projects", available: true },
       { label: "内容 AI", href: "/content-lab", available: true },
       { label: "AI 生图", href: "/image-studio", available: true },
-      { label: "批量改图", href: "/batch-image", available: true },
+      { label: "批量图片工具", href: "/batch-image", available: true },
       { label: "美工协作", href: "/tasks", available: true },
       { label: "结果汇总", href: "/results", available: true },
       { label: "Mock ERP", href: "/erp", available: true },
